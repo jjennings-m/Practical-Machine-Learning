@@ -1,0 +1,160 @@
+---
+title: "Weight Lifting Prediction"
+author: "John Jennings"
+date: "Thursday, March 12, 2015"
+output: html_document
+---
+
+## Executive Summary
+
+A Human Activity Recognition study was performed on six weigh lifters.  Three aspects of that study
+pertain to qualitative activity recognition and were investigated: the problem of specifying correct execution, the automatic and robust detection of execution mistakes, and how to provide feedback on the quality of execution to the user.[1]
+
+Six young health participants were asked to perform one set of 10 repetitions of the Unilateral Dumbbell Biceps Curl in five different fashions: exactly according to the specification (Class A), throwing the elbows to the front (Class B), lifting the dumbbell only halfway (Class C), lowering the dumbbell only halfway (Class D) and throwing the hips to the front (Class E).[1]
+
+Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes.  The dataset contains five classes (sitting-down, standing-up, standing, walking, and sitting).  These five classes will be the focus of our continued investigation.[1]
+
+The goal of this report is to predict the manner in which they did the exercise. This is the "classe" variable in the training set. You may use any of the other variables to predict with. You should create a report describing how you built your model, how you used cross validation, what you think the expected out of sample error is, and why you made the choices you did. You will also use your prediction model to predict 20 different test cases. 
+
+Full documentation of the intitial study are cited in the sources section of this report.
+
+### Setup the Workspace and Download the Data
+
+#### Setup the environment
+```{r clear}
+rm(list=ls()) # Clear the Workspace
+setwd("C:/Users/John/Github/Practical Machine Learning") # Setup the Workspace
+set.seed(100)
+```
+
+#### Load the required libraries
+```{r library, message=FALSE, warning=FALSE}
+library(caret)
+library(randomForest)
+library(rpart)
+```
+
+#### Download the data
+```{r download}
+url.train <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+
+# Download the training dataset.  This may take several minutes.  Skip if it already exists.
+file.train <- "./pml-training.csv"
+        if (!file.exists(file.train)) {
+                download.file(url.train, destfile = file.train, mode = "wb")
+                }
+
+url.test <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+# Download the training dataset.  This may take several minutes.  Skip if it already exists.
+file.test <- "./pml-testing.csv"
+        if (!file.exists(file.test)) {
+                download.file(url.test, destfile = file.test, mode = "wb")
+                }
+```
+
+### Explore and Clean the Data
+
+#### Read the data
+```{r}
+# Read the training and test datasets, this may take several minutes
+data.train <- read.csv("pml-training.csv", sep=",")
+data.test <- read.csv("pml-testing.csv", sep=",") 
+```
+
+#### Exploring the data
+```{r explore, results='hide', echo=TRUE, warning=FALSE, message=FALSE}
+#
+#Results suppressed using results='hide' in order to shorten the length of the report
+#
+str(data.train, list.len=1000) #Use list.len to view more than 99 variables
+table(data.train$classe)  #How many observations for each class?
+```
+
+#### Reload the data, Removing NAs
+```{r}
+# Read the training and test datasets, this may take several minutes
+data.train <- read.csv("pml-training.csv", sep=",", na.strings=c("NA","","#DIV/0!"))
+data.test <- read.csv("pml-testing.csv", sep=",") 
+```
+
+#### Tidy up the data
+```{r}
+data.train.tidy <- data.train[,-c(1:7)]  #Remove unnecessary variables
+data.train.tidy <- data.train.tidy[,colSums(is.na(data.train.tidy)) == 0]  #Remove all columns with zeros
+data.test.tidy <- data.test[,-c(1:7)]  #Remove unnecessary variables
+data.test.tidy <- data.test.tidy[,colSums(is.na(data.test.tidy)) == 0]  #Remove all columns with zeros
+```
+
+#### Partition the training data
+```{r}
+inTrain <- createDataPartition(y=data.train$classe, p=0.75, list=FALSE)
+training <- data.train.tidy[inTrain,]
+testing <- data.train.tidy[-inTrain,]
+dim(training)
+```
+
+### Create the Prediction Models
+
+#### Decision Tree Model Prediction
+```{r}
+model.dt <- rpart(classe ~ ., data=training, method="class")
+predict.dt <- predict(model.dt, testing, type = "class")
+```
+
+#### Random Forest Model Prediction
+```{r}
+model.rf <- randomForest(classe ~. , data=training, method="class")
+predict.rf <- predict(model.rf, testing, type = "class")
+```
+
+#### Estimate the Error With Cross Validation
+
+NOTE:  In random forests, there is no need for cross-validation or a separate test set to get an unbiased estimate of the test set error. It is estimated internally, during the run, as follows:
+
+Each tree is constructed using a different bootstrap sample from the original data. About one-third of the cases are left out of the bootstrap sample and not used in the construction of the kth tree.
+
+Put each case left out in the construction of the kth tree down the kth tree to get a classification. In this way, a test set classification is obtained for each case in about one-third of the trees. At the end of the run, take j to be the class that got most of the votes every time case n was oob. The proportion of times that j is not equal to the true class of n averaged over all cases is the oob error estimate. This has proven to be unbiased in many tests.[2]
+
+```{r}
+summary(model.rf)
+```
+
+#### Compare the Decision Tree model with the Random Forest model.
+```{r}
+confusionMatrix(predict.dt, testing$classe)
+confusionMatrix(predict.rf, testing$classe)
+```
+
+#### Summary of the Results
+
+The Random Forest model has a higher accuracy than the Decision Tree model (0.9951 vs. 0.7225).  The Specificity and Sensitivity is also higher for the Random Forest model in all cases.  This results in positive predictor values for Random Forest of 0.9971 (Class A), 0.9968 (Class B), 0.9827 (Class C), 0.9975 (Class D), and 1.0000 (Class E) vs. Decision Tree values of 0.7929 (Class A), 0.6176 (Class B), 0.6542 (Class C), 0.6866 (Class D), and 0.8370 (Class E), meaning that the Random Forest model will positively identify how the exercise was performed almost 100% of the time.
+
+I will use the Random Forest model to proceed with the grading assignment.
+
+### Prediction for Grading Submission
+```{r}
+predict.grade <- predict(model.rf, data.test, type="class")
+predict.grade
+```
+
+#### Create Prediction Files
+```{r}
+pml_write_files = function(x){
+  n = length(x)
+  for(i in 1:n){
+    filename = paste0("problem_id_",i,".txt")
+    write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+  }
+}
+
+pml_write_files(predict.grade)
+```
+
+### Source:
+
+[1] Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity Recognition of Weight Lifting Exercises. Proceedings of 4th International Conference in Cooperation with SIGCHI (Augmented Human '13) . Stuttgart, Germany: ACM SIGCHI, 2013.
+
+Read more: http://groupware.les.inf.puc-rio.br/har#ixzz3UAUtpobC
+
+[2]  Breiman, Leo and Cutler, Adele.  Random Forests.  Retrieved from https://www.stat.berkeley.edu/~breiman/RandomForests/cc_home.htm#ooberr
